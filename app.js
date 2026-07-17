@@ -51,50 +51,71 @@ const words = [
 ]
 
 const maxStrikes = 3
-const skips = 5
+const maxPasses = 5
 
+function App () {
+  /*
+   * Retrieve Game data from the previous game, if not set to null
+   */
+  const savedGame = JSON.parse(localStorage.getItem('scrambleGame'))
 
-//make a scrambled word using shuffle function 
-function scrambleWord (word) {
-  let scrambled = shuffle(word)
-
-  while (scrambled === word && word.length > 1) {
-    scrambled = shuffle(word)
-  }
-
-  return scrambled
-}
-
-//when page load, take the game data (as an object) from local storage without refresh the data
-const savedGame = JSON.parse(localStorage.getItem('scrambleGame'))
-
-function App(){
-
-  const startingWords = savedGame ? savedGame.remainingWords : shuffle(words)
-  const startingWord = startingWords.length > 0 ? startingWords[0] : ''
-
-  //save the unfinished words
-  const [remainingWords, setRemainingWords] = React.useState(startingWords)
-  //save the scrambled words
-  const [scrambledWord, setScrambledWord] = React.useState(
-    savedGame ? savedGame.scrambledWord : scrambleWord(startingWord)
+  /*
+   * shuffle the word list once when start the game
+   */
+  const [gameWords, setGameWords] = React.useState(
+    savedGame ? savedGame.gameWords : shuffle(words)
   )
 
-  //save the guessing words
+  /*
+   * wordIndex show where the user are
+   */
+  const [wordIndex, setWordIndex] = React.useState(
+    savedGame ? savedGame.wordIndex : 0
+  )
+
   const [guess, setGuess] = React.useState('')
 
-  //save the strikes
-  const [strikes, setStrikes] = React.useState(savedGame ? savedGame.strikes : 0)
-  const [passes, setPasses] = React.useState(savedGame ? savedGame.passes : startingPasses)
+  const [points, setPoints] = React.useState(
+    savedGame ? savedGame.points : 0
+  )
 
-  //game over or still continue
-  
-  const currentWord = remainingWords[0]
+  const [strikes, setStrikes] = React.useState(
+    savedGame ? savedGame.strikes : 0
+  )
 
-  // Save the game whenever the player's progress changes.
+  const [passes, setPasses] = React.useState(
+    savedGame ? savedGame.passes : maxPasses
+  )
+
+  const [message, setMessage] = React.useState(
+    savedGame ? savedGame.message : ''
+  )
+
+  const [gameOver, setGameOver] = React.useState(
+    savedGame ? savedGame.gameOver : false
+  )
+
+  /*
+   * current word
+   */
+  const currentWord = gameWords[wordIndex]
+
+  /*
+   * Scrambled current word
+   */
+  const [scrambledWord, setScrambledWord] = React.useState(
+    savedGame
+      ? savedGame.scrambledWord
+      : shuffle(gameWords[0])
+  )
+
+  /*
+   * Once the process change, save to local storage
+   */
   React.useEffect(() => {
     const gameData = {
-      remainingWords,
+      gameWords,
+      wordIndex,
       scrambledWord,
       points,
       strikes,
@@ -103,134 +124,167 @@ function App(){
       gameOver
     }
 
-    localStorage.setItem('scrambleGame', JSON.stringify(gameData))
-  }, [remainingWords, scrambledWord, points, strikes, passes, message, gameOver])
-  
+    localStorage.setItem(
+      'scrambleGame',
+      JSON.stringify(gameData)
+    )
+  }, [
+    gameWords,
+    wordIndex,
+    scrambledWord,
+    points,
+    strikes,
+    passes,
+    message,
+    gameOver
+  ])
 
-  function showNextWord (newWords) {
-    if (newWords.length === 0) {
-      setScrambledWord('')
-      setMessage('You completed every word!')
+  /*
+   * next word
+   */
+  function nextWord () {
+    const nextIndex = wordIndex + 1
+
+    /*
+     * no word left -> win
+     */
+    if (nextIndex >= gameWords.length) {
       setGameOver(true)
+      setMessage('You won!')
       return
     }
 
-    setScrambledWord(scrambleWord(newWords[0]))
+    setWordIndex(nextIndex)
+    setScrambledWord(shuffle(gameWords[nextIndex]))
   }
 
+  /*
+   * run when user enter
+   */
   function handleSubmit (event) {
     event.preventDefault()
 
     const playerGuess = guess.trim().toLowerCase()
+
+    /*
+     * delete text box
+     */
     setGuess('')
 
     if (playerGuess === '') {
-      setMessage('Please type a guess first.')
       return
     }
 
-    if (playerGuess === currentWord.toLowerCase()) {
-      const newWords = remainingWords.slice(1)
-
+    /*
+     * guess the word correctly
+     */
+    if (playerGuess === currentWord) {
       setPoints(points + 1)
-      setRemainingWords(newWords)
-      setMessage('Correct! Here is the next word.')
-      showNextWord(newWords)
+      setMessage('Correct!')
+      nextWord()
     } else {
+      /*
+       * guess the word not correctly
+       */
       const newStrikes = strikes + 1
 
       setStrikes(newStrikes)
+      setMessage('Incorrect!')
 
+      /*
+       * lost when out of strikes
+       */
       if (newStrikes >= maxStrikes) {
-        setMessage(`Game over! The word was "${currentWord}".`)
         setGameOver(true)
-      } else {
-        setMessage('Incorrect. Try the same word again.')
+        setMessage('You lost.')
       }
     }
   }
 
+  /*
+   * pass the word
+   */
   function handlePass () {
-    if (passes <= 0 || gameOver) {
+    if (passes === 0) {
       return
     }
 
-    const newWords = remainingWords.slice(1)
-
     setPasses(passes - 1)
-    setRemainingWords(newWords)
-    setMessage(`Passed! The word was "${currentWord}".`)
-    showNextWord(newWords)
+    setMessage('Word passed.')
+    nextWord()
   }
 
-  function restartGame () {
+  /*
+   * replay the game again
+   */
+  function playAgain () {
     const newWords = shuffle(words)
 
-    setRemainingWords(newWords)
-    setScrambledWord(scrambleWord(newWords[0]))
+    setGameWords(newWords)
+    setWordIndex(0)
+    setScrambledWord(shuffle(newWords[0]))
     setGuess('')
     setPoints(0)
     setStrikes(0)
-    setPasses(startingPasses)
-    setMessage('New game started. Unscramble the word below.')
+    setPasses(maxPasses)
+    setMessage('')
     setGameOver(false)
+
+    localStorage.removeItem('scrambleGame')
   }
 
   return (
-    <main className="game">
-      <h1>Scramble</h1>
-      <p className="instructions">Guess the original word before you get {maxStrikes} strikes.</p>
+    <main>
+      <h1>Welcome to Scramble.</h1>
 
-      <section className="scoreboard">
-        <p>Points: <strong>{points}</strong></p>
-        <p>Strikes: <strong>{strikes}/{maxStrikes}</strong></p>
-        <p>Passes: <strong>{passes}</strong></p>
-        <p>Words left: <strong>{remainingWords.length}</strong></p>
-      </section>
+      <div className="score">
+        <div>
+          <span>{points}</span>
+          <p>POINTS</p>
+        </div>
+
+        <div>
+          <span>{strikes}</span>
+          <p>STRIKES</p>
+        </div>
+      </div>
+
+      {message && (
+        <p className="message">{message}</p>
+      )}
 
       {!gameOver ? (
-        <section className="play-area">
-          <p className="label">Scrambled word</p>
-          <p className="scrambled-word">{scrambledWord}</p>
+        <section>
+          <h2>{scrambledWord}</h2>
 
           <form onSubmit={handleSubmit}>
-            <label htmlFor="guess">Your guess</label>
             <input
-              id="guess"
               type="text"
               value={guess}
               onChange={(event) => setGuess(event.target.value)}
-              autoComplete="off"
               autoFocus
             />
-
-            <div className="buttons">
-              <button type="submit">Guess</button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={handlePass}
-                disabled={passes === 0}
-              >
-                Pass
-              </button>
-            </div>
           </form>
+
+          <button
+            type="button"
+            onClick={handlePass}
+            disabled={passes === 0}
+          >
+            {passes} Passes Remaining
+          </button>
         </section>
       ) : (
-        <section className="game-over">
-          <h2>Game Over</h2>
-          <p>Your final score is {points}.</p>
-          <button type="button" onClick={restartGame}>Play Again</button>
-        </section>
+        <button type="button" onClick={playAgain}>
+          Play Again
+        </button>
       )}
-
-      <p className="message" aria-live="polite">{message}</p>
     </main>
   )
 }
 
-const root = ReactDOM.createRoot(document.getElementById('root'))
+const root = ReactDOM.createRoot(
+  document.getElementById('root')
+)
+
 root.render(<App />)
-
-
